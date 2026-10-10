@@ -174,7 +174,7 @@ const REISNET_PLANS=[{"name":"SPL-MAX-25 Mbps-30D","speed":"25 Mbps","amount":31
 db.customers.forEach(c=>{if(!c.renewedOn)c.renewedOn=c.start||'';});
 const REISNET_PLAN_MAP=Object.fromEntries(REISNET_PLANS.map(p=>[p.name,p]));
 if(!Array.isArray(db.plans) || db.plans.length===0) db.plans=REISNET_PLANS;
-db.customers.forEach(c=>{const p=REISNET_PLAN_MAP[c.plan];if(p){c.amount=p.amount;c.validity=p.validity;c.speed=p.speed;}});
+db.customers.forEach(c=>{const p=REISNET_PLAN_MAP[c.plan];if(p){c.amount=p.amount;c.validity=p.validity;c.speed=p.speed;} if(c.start && Number(c.validity)>0){const d=new Date(c.start+'T00:00:00');d.setDate(d.getDate()+Number(c.validity));c.expiry=d.toISOString().slice(0,10);}});
 localStorage.setItem(KEY,JSON.stringify(db));
 
 function money(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
