@@ -189,7 +189,7 @@ function activeCustomers(){return db.customers.filter(c=>c.status==='Active')}
 function updateDashboard(){
  dTotal.textContent=db.customers.length;dActive.textContent=activeCustomers().length;
  let due=db.invoices.filter(i=>i.balance>0);dDue.textContent=new Set(due.map(i=>i.customerId)).size;dExpire2.textContent=reminderCustomers().length;
- let today=new Date().toISOString().slice(0,10),month=today.slice(0,7);
+ let today=localDateString(new Date()),month=today.slice(0,7);
  dToday.textContent=money(db.payments.filter(p=>p.date===today).reduce((s,p)=>s+p.amount,0));
  dMonth.textContent=money(db.payments.filter(p=>p.date.startsWith(month)).reduce((s,p)=>s+p.amount,0));
  let rem=reminderCustomers();dExpire2.textContent=rem.length;dashRemText.textContent=rem.length?`${rem.length} customer(s) have a plan expiring in 2 days.`:'Customers whose plan expiry is 2 days away will appear here.';
@@ -198,16 +198,16 @@ function updateDashboard(){
  topName.textContent=db.settings.name+' – ISP Billing Manager';topLogo.src=db.settings.logo;sideLogo.src=db.settings.logo;
 }
 function makeQR(id,upi,amount){renderUploadedQr(id,amount)}
-function calcExpiryDate(start,validity){if(!start||!validity)return '';let d=new Date(start+'T00:00:00');d.setDate(d.getDate()+Number(validity)-1);return d.toISOString().slice(0,10)}
+function calcExpiryDate(start,validity){if(!start||!validity)return '';let d=new Date(start+'T00:00:00');d.setDate(d.getDate()+Number(validity)-1);return localDateString(d)}
 function daysLeft(date){if(!date)return 99999;let a=new Date();a.setHours(0,0,0,0);let b=new Date(date+'T00:00:00');return Math.ceil((b-a)/86400000)}
 function calcCustomerExpiry(){if(cStart.value&&cValidity.value)cExpiry.value=calcExpiryDate(cStart.value,Number(cValidity.value))}
-function quickFill(){let c=db.customers.find(x=>x.id===qCustomer.value);if(!c)return;qPlan.value=c.plan;qAmount.value=c.amount;qStart.value=c.start||c.renewedOn||new Date().toISOString().slice(0,10);qValidity.value=c.validity||30;calcQuickDates()}
+function quickFill(){let c=db.customers.find(x=>x.id===qCustomer.value);if(!c)return;qPlan.value=c.plan;qAmount.value=c.amount;qStart.value=c.start||c.renewedOn||localDateString(new Date());qValidity.value=c.validity||30;calcQuickDates()}
 qStart.addEventListener('change',calcQuickDates);qValidity.addEventListener('change',calcQuickDates);cStart.addEventListener('change',calcCustomerExpiry);cValidity.addEventListener('change',calcCustomerExpiry);
 function calcQuickDates(){if(!qStart.value)return;let v=qValidity.value;if(v==='custom')return;let d=new Date(qStart.value+'T00:00:00');d.setDate(d.getDate()+Number(v)-1);qEnd.value=localDateString(d);qPeriod.value=qStart.value+' - '+qEnd.value}
 function setupQuick(){qCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.filter(c=>c.status==='Active').map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('')}
 function quickInvoice(){if(!qCustomer.value)return alert('Select customer.');let c=db.customers.find(x=>x.id===qCustomer.value);let inv=createInvoiceData(c,qPlan.value,qAmount.value,qStart.value,qValidity.value,qPrev.value,qPaid.value,'UPI');save();showInvoice(inv)}
-function loadPlanOptions(){if(!cStart.value)cStart.value=new Date().toISOString().slice(0,10);calcCustomerExpiry();cPlan.innerHTML=db.plans.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
-function saveCustomer(){let id=cId.value.trim(),name=cName.value.trim();if(!id||!name)return alert('Customer ID and Name are required.');let start=cStart.value||new Date().toISOString().slice(0,10);let obj={id,name,mobile:cMobile.value.trim(),address:cAddress.value.trim(),plan:cPlan.value,speed:cSpeed.value.trim(),amount:Number(cAmount.value||0),validity:Number(cValidity.value||30),start,renewedOn:start,expiry:calcExpiryDate(start,Number(cValidity.value||30)),status:cStatus.value};let i=db.customers.findIndex(c=>c.id===id);if(i>=0)db.customers[i]=obj;else db.customers.push(obj);save();clearCustomer();alert('Customer saved.')}
+function loadPlanOptions(){if(!cStart.value)cStart.value=localDateString(new Date());calcCustomerExpiry();cPlan.innerHTML=db.plans.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
+function saveCustomer(){let id=cId.value.trim(),name=cName.value.trim();if(!id||!name)return alert('Customer ID and Name are required.');let start=cStart.value||localDateString(new Date());let obj={id,name,mobile:cMobile.value.trim(),address:cAddress.value.trim(),plan:cPlan.value,speed:cSpeed.value.trim(),amount:Number(cAmount.value||0),validity:Number(cValidity.value||30),start,renewedOn:start,expiry:calcExpiryDate(start,Number(cValidity.value||30)),status:cStatus.value};let i=db.customers.findIndex(c=>c.id===id);if(i>=0)db.customers[i]=obj;else db.customers.push(obj);save();clearCustomer();alert('Customer saved.')}
 function clearCustomer(){['cId','cName','cMobile','cAddress','cSpeed','cAmount','cStart','cExpiry'].forEach(id=>document.getElementById(id).value='');if(cPlan.options.length)cPlan.selectedIndex=0;cValidity.value=30;cStatus.value='Active'}
 function renderCustomers(){let q=(custSearch.value||'').toLowerCase();customersTable.innerHTML=db.customers.filter(c=>(c.id+' '+c.name+' '+c.mobile+' '+c.plan).toLowerCase().includes(q)).map(c=>{let dl=daysLeft(c.expiry);let st=dl<0?'EXPIRED':dl<=2?'EXPIRING':'ACTIVE';return `<tr><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${esc(c.mobile)}</td><td>${esc(c.plan)}</td><td>${esc(c.speed)}</td><td>${money(c.amount)}</td><td>${fmt(c.start||c.renewedOn)}</td><td>${fmt(c.expiry)}</td><td>${dl<0?Math.abs(dl)+' days ago':dl+' days'}</td><td><span class="badge ${st==='ACTIVE'?'b-paid':st==='EXPIRED'?'b-due':'b-partial'}">${st}</span></td><td><button class="btn btn-light" onclick='editCustomer(${JSON.stringify(c.id)})'>Edit</button> <button class="btn btn-green" onclick='openRenew(${JSON.stringify(c.id)})'>Renew</button> <button class="btn btn-red" onclick='deleteCustomer(${JSON.stringify(c.id)})'>Delete</button></td></tr>`}).join('')||'<tr><td colspan="12" class="empty">No customers.</td></tr>'}
 function deleteCustomer(id){let c=db.customers.find(x=>x.id===id);if(!c)return;if(!confirm('Delete customer '+id+'? This will remove the customer from this portal.'))return;db.customers=db.customers.filter(x=>x.id!==id);save();renderCustomers();refreshAll();alert('Customer deleted.')}
@@ -215,14 +215,14 @@ function editCustomer(id){let c=db.customers.find(x=>x.id===id);if(!c)return;go(
 function addPlan(){let name=pName.value.trim();if(!name)return alert('Enter plan name.');db.plans.push({name,speed:pSpeed.value,amount:Number(pAmount.value||0),validity:Number(pValidity.value||30)});save();pName.value='';pSpeed.value='';pAmount.value='';renderPlans()}
 function renderPlans(){plansTable.innerHTML=db.plans.map((p,i)=>`<tr><td>${esc(p.name)}</td><td>${esc(p.speed)}</td><td>${money(p.amount)}</td><td>${p.validity} Days</td><td><button class="btn btn-red" onclick="deletePlan(${i})">Delete</button></td></tr>`).join('')}
 function deletePlan(i){if(confirm('Delete this plan?')){db.plans.splice(i,1);save();renderPlans()}}
-function setupInvoice(){iCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('');iStart.value=new Date().toISOString().slice(0,10);iPrev.value=0;iPaid.value=0;calcDates();calcTotals()}
-function fillInvoiceForm(){let c=db.customers.find(x=>x.id===iCustomer.value);if(!c)return;iId.value=c.id;iMobile.value=c.mobile;iPlan.value=c.plan;iAmount.value=c.amount;iValidity.value=c.validity||30;iStart.value=c.start||c.renewedOn||new Date().toISOString().slice(0,10);calcDates();calcTotals()}
+function setupInvoice(){iCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('');iStart.value=localDateString(new Date());iPrev.value=0;iPaid.value=0;calcDates();calcTotals()}
+function fillInvoiceForm(){let c=db.customers.find(x=>x.id===iCustomer.value);if(!c)return;iId.value=c.id;iMobile.value=c.mobile;iPlan.value=c.plan;iAmount.value=c.amount;iValidity.value=c.validity||30;iStart.value=c.start||c.renewedOn||localDateString(new Date());calcDates();calcTotals()}
 function calcDates(){if(!iStart.value||iValidity.value==='custom')return;let d=new Date(iStart.value+'T00:00:00');d.setDate(d.getDate()+Number(iValidity.value)-1);iEnd.value=localDateString(d);iPeriod.value=iStart.value+' - '+iEnd.value}
 function calcTotals(){let a=Number(iAmount.value||0),p=Number(iPrev.value||0),paid=Number(iPaid.value||0);iCurrent.textContent=money(a);iTotal.textContent=money(a+p);iBalance.textContent=money(Math.max(a+p-paid,0))}
 function createInvoiceData(c,plan,amount,start,validity,prev,paid,mode){
- let d=new Date(start+'T00:00:00');d.setDate(d.getDate()+Number(validity)-1);let end=d.toISOString().slice(0,10),total=Number(amount||0)+Number(prev||0),pay=Math.min(Number(paid||0),total),balance=Math.max(total-pay,0);
+ let d=new Date(start+'T00:00:00');d.setDate(d.getDate()+Number(validity)-1);let end=localDateString(d),total=Number(amount||0)+Number(prev||0),pay=Math.min(Number(paid||0),total),balance=Math.max(total-pay,0);
  let no=db.settings.prefix+'/'+new Date(start).getFullYear()+'/'+String(db.settings.seq++).padStart(4,'0');
- let inv={no,customerId:c.id,customer:c.name,mobile:c.mobile,address:c.address,plan,speed:c.speed,amount:Number(amount||0),validity:Number(validity),start,end,period:start+' - '+end,prev:Number(prev||0),total,paid:pay,balance,payMode:mode||'Unpaid',date:new Date().toISOString().slice(0,10),dueDate:end};
+ let inv={no,customerId:c.id,customer:c.name,mobile:c.mobile,address:c.address,plan,speed:c.speed,amount:Number(amount||0),validity:Number(validity),start,end,period:start+' - '+end,prev:Number(prev||0),total,paid:pay,balance,payMode:mode||'Unpaid',date:localDateString(new Date()),dueDate:end};
  c.start=start;c.renewedOn=start;c.expiry=end;localStorage.setItem(KEY,JSON.stringify(db));db.invoices.push(inv);if(pay>0)db.payments.push({receipt:'RCPT/'+new Date(start).getFullYear()+'/'+String(db.payments.length+1).padStart(4,'0'),invoice:inv.no,customerId:c.id,customer:c.name,date:inv.date,amount:pay,mode:inv.payMode,balance});return inv
 }
 function createInvoice(){let c=db.customers.find(x=>x.id===iCustomer.value);if(!c)return alert('Select customer.');let inv=createInvoiceData(c,iPlan.value,iAmount.value,iStart.value,iValidity.value,iPrev.value,iPaid.value,iMode.value);save();showInvoice(inv)}
@@ -231,7 +231,7 @@ function renderInvoices(){let q=(invSearch.value||'').toLowerCase();invTable.inn
 
 function setupPaymentForm(){
   if(!document.getElementById('payCustomer')) return;
-  payDate.value=new Date().toISOString().slice(0,10);
+  payDate.value=localDateString(new Date());
   payAmount.value='';
   payMode.value='UPI';
   payCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('');
@@ -247,7 +247,7 @@ function fillPaymentInvoice(){
   if(inv) payAmount.value=Math.max(Number(inv.balance||0),0);
 }
 function recordPayment(){
-  let cid=payCustomer.value,no=payInvoice.value,amt=Number(payAmount.value||0),date=payDate.value||new Date().toISOString().slice(0,10),mode=payMode.value;
+  let cid=payCustomer.value,no=payInvoice.value,amt=Number(payAmount.value||0),date=payDate.value||localDateString(new Date()),mode=payMode.value;
   if(!cid||!no)return alert('Select customer and invoice.');
   if(!(amt>0))return alert('Enter a valid payment amount.');
   let inv=db.invoices.find(i=>i.no===no);
@@ -500,7 +500,7 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
   let renewCustomerId = null;
 
   function dateAddDays(dateStr, days){
-    let d = new Date((dateStr || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+    let d = new Date((dateStr || localDateString(new Date())) + 'T00:00:00');
     d.setDate(d.getDate() + Number(days || 0));
     return localDateString(d);
   }
@@ -513,7 +513,7 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
     document.getElementById('renewCustomer').value=c.name||'';
     document.getElementById('renewId').value=c.id||'';
     document.getElementById('renewOldPlan').value=c.plan||'';
-    document.getElementById('renewStart').value=new Date().toISOString().slice(0,10);
+    document.getElementById('renewStart').value=localDateString(new Date());
     document.getElementById('renewPaid').value='0';
     document.getElementById('renewMode').value='UPI';
 
