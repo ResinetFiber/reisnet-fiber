@@ -190,7 +190,15 @@ localStorage.setItem(KEY,JSON.stringify(db));
 
 function money(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function esc(x){return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function fmt(d){if(!d)return '';const m=String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:new Date(d).toLocaleDateString('en-IN')}
+function fmt(v){
+  if(!v)return '';
+  const s=String(v);
+  const match=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(match)return `${match[3]}/${match[2]}/${match[1]}`;
+  const d=new Date(s);
+  if(Number.isNaN(d.getTime()))return s;
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
 function go(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.page===id));if(id==='dashboard')updateDashboard();if(id==='customers')renderCustomers();if(id==='addcustomer')loadPlanOptions();if(id==='plans')renderPlans();if(id==='invoice')setupInvoice();if(id==='invoices')renderInvoices();if(id==='payments'){setupPaymentForm();renderPayments();}if(id==='reminders')renderReminders();if(id==='reports')renderReports();if(id==='settings')loadSettings();scrollTo(0,0)}
 function activeCustomers(){return db.customers.filter(c=>c.status==='Active')}
 function updateDashboard(){
@@ -224,14 +232,11 @@ function renderPlans(){plansTable.innerHTML=db.plans.map((p,i)=>`<tr><td>${esc(p
 function deletePlan(i){if(confirm('Delete this plan?')){db.plans.splice(i,1);save();renderPlans()}}
 function setupInvoice(){iCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('');iStart.value=localDateString(new Date());iPrev.value=0;iPaid.value=0;calcDates();calcTotals()}
 function fillInvoiceForm(){let c=db.customers.find(x=>x.id===iCustomer.value);if(!c)return;iId.value=c.id;iMobile.value=c.mobile;iPlan.value=c.plan;iAmount.value=c.amount;iValidity.value=c.validity||30;iStart.value=c.start||c.renewedOn||localDateString(new Date());calcDates();calcTotals()}
-function calcDates(){if(!iStart.value||iValidity.value==='custom')return;const end=addValidityDays(iStart.value,iValidity.value);iEnd.value=end;iPeriod.value=iStart.value+' - '+end}
-function calcTotals(){let a=Number(iAmount.value||0),p=Number(iPrev.value||0),paid=Number(iPaid.value||0);iCurrent.textContent=money(a);iTotal.textContent=money(a+p);iBalance.textContent=money(Math.max(a+p-paid,0))}
-function createInvoiceData(c,plan,amount,start,validity,prev,paid,mode){
- let end=addValidityDays(start,validity),total=Number(amount||0)+Number(prev||0),pay=Math.min(Number(paid||0),total),balance=Math.max(total-pay,0);
- let year=String(start||'').slice(0,4);
- let no=db.settings.prefix+'/'+year+'/'+String(db.settings.seq++).padStart(4,'0');
- let inv={no,customerId:c.id,customer:c.name,mobile:c.mobile,address:c.address,plan,speed:c.speed,amount:Number(amount||0),validity:Number(validity),start,end,period:start+' - '+end,prev:Number(prev||0),total,paid:pay,balance,payMode:mode||'Unpaid',date:localDateString(new Date()),dueDate:end};
- c.start=start;c.renewedOn=start;c.expiry=end;localStorage.setItem(KEY,JSON.stringify(db));db.invoices.push(inv);if(pay>0)db.payments.push({receipt:'RCPT/'+year+'/'+String(db.payments.length+1).padStart(4,'0'),invoice:inv.no,customerId:c.id,customer:c.name,date:inv.date,amount:pay,mode:inv.payMode,balance});return inv
+function calcDates(){
+  if(!iStart.value||iValidity.value==='custom')return;
+  const end=addValidityDays(iStart.value,iValidity.value);
+  iEnd.value=end;
+  iPeriod.value=iStart.value+' - '+end;
 }
 function createInvoice(){let c=db.customers.find(x=>x.id===iCustomer.value);if(!c)return alert('Select customer.');let inv=createInvoiceData(c,iPlan.value,iAmount.value,iStart.value,iValidity.value,iPrev.value,iPaid.value,iMode.value);save();showInvoice(inv)}
 function rowInvoice(i){let st=i.balance<=0?'PAID':i.paid>0?'PARTIAL':'DUE';return `<tr><td>${esc(i.no)}</td><td>${esc(i.customer)}</td><td>${esc(i.period)}</td><td>${money(i.total)}</td><td>${money(i.paid)}</td><td>${money(i.balance)}</td><td><span class="badge ${st==='PAID'?'b-paid':st==='DUE'?'b-due':'b-partial'}">${st}</span></td><td><button class="btn btn-blue" onclick='showInvoice(${JSON.stringify(i)})'>View</button> <button class="btn btn-light" onclick='showReceipt(${JSON.stringify(i.no)})'>Receipt</button> <button class="btn btn-red" onclick='deleteInvoiceByNo(${JSON.stringify(i.no)}, this)'>Delete</button></td></tr>`}
