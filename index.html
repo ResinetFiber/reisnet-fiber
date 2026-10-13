@@ -213,6 +213,39 @@ function updateDashboard(){
  topName.textContent=db.settings.name+' – ISP Billing Manager';topLogo.src=db.settings.logo;sideLogo.src=db.settings.logo;
 }
 function makeQR(id,upi,amount){renderUploadedQr(id,amount)}
+
+// Shared invoice creator used by Quick Invoice, Full Invoice, and Renewal.
+function createInvoiceData(c, planName, amount, start, validity, previousBalance, paidAmount, payMode){
+  if(!c) throw new Error('Customer not found.');
+  const days=Number(validity);
+  if(!start || !Number.isFinite(days) || days<=0) throw new Error('Please enter a valid start date and validity.');
+  const end=addValidityDays(start,days);
+  if(!end) throw new Error('Could not calculate the plan expiry date.');
+  const charge=Math.max(0,Number(amount)||0);
+  const prev=Math.max(0,Number(previousBalance)||0);
+  const paid=Math.max(0,Number(paidAmount)||0);
+  const total=charge+prev;
+  if(paid>total) throw new Error('Payment cannot be greater than total amount.');
+  if(!Array.isArray(db.invoices)) db.invoices=[];
+  if(!Array.isArray(db.payments)) db.payments=[];
+  db.settings=db.settings||{};
+  const prefix=String(db.settings.prefix||'INV');
+  const seq=Math.max(1,Number(db.settings.seq)||1);
+  const no=prefix+'-'+String(seq).padStart(5,'0');
+  db.settings.seq=seq+1;
+  const inv={
+    no,date:localDateString(new Date()),customer:c.name||'',customerId:c.id||'',mobile:c.mobile||'',address:c.address||'',
+    plan:planName||c.plan||'',speed:c.speed||'',validity:days,start,end,period:start+' - '+end,
+    amount:charge,prev,total,paid,balance:Math.max(total-paid,0),payMode:payMode||'Unpaid'
+  };
+  db.invoices.push(inv);
+  // Renewal and invoice generation both update the customer's current service dates.
+  c.plan=inv.plan; c.amount=charge; c.validity=days; c.start=start; c.renewedOn=start; c.expiry=end; c.status='Active';
+  if(paid>0){
+    db.payments.push({receipt:'RCPT-'+Date.now(),customer:c.name||'',customerId:c.id||'',invoice:no,invoiceNo:no,date:inv.date,amount:paid,mode:inv.payMode,balance:inv.balance});
+  }
+  return inv;
+}
 function calcExpiryDate(start,validity){if(!start||!validity)return '';let d=new Date(start+'T00:00:00');d.setDate(d.getDate()+Number(validity)-1);return localDateString(d)}
 function daysLeft(date){if(!date)return 99999;let a=new Date();a.setHours(0,0,0,0);let b=new Date(date+'T00:00:00');return Math.ceil((b-a)/86400000)}
 function calcCustomerExpiry(){if(cStart.value&&cValidity.value)cExpiry.value=calcExpiryDate(cStart.value,Number(cValidity.value))}
@@ -593,7 +626,7 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
     if(typeof renderPayments==='function')renderPayments();
     if(typeof updateDashboard==='function')updateDashboard();
     closeRenew();
-    alert('Customer renewed and renewal invoice created.');
+    showInvoice(inv);
   };
 })();
 </script>
