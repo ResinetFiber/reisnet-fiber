@@ -600,33 +600,40 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
   });
 
   window.saveRenewal = function(){
-    if(!renewCustomerId)return;
-    let c=db.customers.find(x=>x.id===renewCustomerId);
-    if(!c)return alert('Customer not found.');
-    let planEl=document.getElementById('renewPlan');
-    let idx=Number(planEl.value);
-    let plans=Array.isArray(db.plans)?db.plans:[];
-    let p=plans[idx]||{};
-    let planName=p.name||p.plan||c.plan||'';
-    let amount=Number(document.getElementById('renewAmount').value||0);
-    let start=document.getElementById('renewStart').value;
-    let days=Number(document.getElementById('renewValidity').value||30);
-    let paid=Number(document.getElementById('renewPaid').value||0);
-    let mode=document.getElementById('renewMode').value||'Unpaid';
-    if(!start || !(amount>=0) || !(days>0)) return alert('Please fill renewal details.');
-    if(paid<0 || paid>amount) return alert('Payment cannot be greater than plan amount.');
-    if(!Array.isArray(db.payments))db.payments=[];
-    if(!Array.isArray(db.invoices))db.invoices=[];
-    c.speed=p.speed||c.speed;
-    let inv=createInvoiceData(c,planName,amount,start,days,0,paid,mode);
-    save();
-    if(typeof renderCustomers==='function')renderCustomers();
-    if(typeof renderInvoices==='function')renderInvoices();
-    if(typeof renderReminders==='function')renderReminders();
-    if(typeof renderPayments==='function')renderPayments();
-    if(typeof updateDashboard==='function')updateDashboard();
-    closeRenew();
-    showInvoice(inv);
+    if(!renewCustomerId){ alert('Please select a customer and open Renew again.'); return; }
+    try {
+      const c=db.customers.find(x=>String(x.id)===String(renewCustomerId));
+      if(!c){ alert('Customer not found. Please close and reopen Renew.'); return; }
+      const planEl=document.getElementById('renewPlan');
+      const plans=Array.isArray(db.plans)?db.plans:[];
+      const idx=planEl.value==='' ? -1 : Number(planEl.value);
+      const p=idx>=0 ? (plans[idx]||{}) : {};
+      const planName=p.name||p.plan||c.plan||'';
+      const amount=Number(document.getElementById('renewAmount').value);
+      const start=document.getElementById('renewStart').value;
+      const days=Number(document.getElementById('renewValidity').value);
+      const paid=Number(document.getElementById('renewPaid').value||0);
+      const mode=document.getElementById('renewMode').value||'Unpaid';
+      if(!start) { alert('Please select the renewal start date.'); return; }
+      if(!Number.isFinite(amount)||amount<0) { alert('Please enter a valid plan amount.'); return; }
+      if(!Number.isFinite(days)||days<=0) { alert('Please select a valid plan validity.'); return; }
+      if(!Number.isFinite(paid)||paid<0||paid>amount) { alert('Payment received must be between ₹0 and the plan amount.'); return; }
+      if(!Array.isArray(db.payments))db.payments=[];
+      if(!Array.isArray(db.invoices))db.invoices=[];
+      if(p.speed)c.speed=p.speed;
+      const inv=createInvoiceData(c,planName,amount,start,days,0,paid,mode);
+      // Persist locally first; cloud-sync problems must not block invoice display.
+      localStorage.setItem(KEY,JSON.stringify(db));
+      try { if(typeof REISNET_PENDING_SYNC!=='undefined') localStorage.setItem(REISNET_PENDING_SYNC,'1'); } catch(syncMarkError) {}
+      if(typeof refreshAll==='function') refreshAll();
+      closeRenew();
+      showInvoice(inv);
+      // Cloud sync runs separately and cannot prevent the invoice from appearing.
+      try { if(typeof cloudSave==='function') cloudSave(); } catch(cloudError) { console.error('Renewal invoice cloud sync failed:',cloudError); }
+    } catch(e) {
+      console.error('Renewal invoice generation failed:',e);
+      alert('Invoice generate nahi hua: '+(e && e.message ? e.message : String(e))+'\nPlease check the renewal details and try again.');
+    }
   };
 })();
 </script>
