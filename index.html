@@ -255,7 +255,50 @@ function calcQuickDates(){if(!qStart.value)return;let v=qValidity.value;if(v==='
 function setupQuick(){qCustomer.innerHTML='<option value="">Select customer</option>'+db.customers.filter(c=>c.status==='Active').map(c=>`<option value="${esc(c.id)}">${esc(c.id)} — ${esc(c.name)}</option>`).join('')}
 function quickInvoice(){if(!qCustomer.value)return alert('Select customer.');let c=db.customers.find(x=>x.id===qCustomer.value);let inv=createInvoiceData(c,qPlan.value,qAmount.value,qStart.value,qValidity.value,qPrev.value,qPaid.value,'UPI');save();showInvoice(inv)}
 function loadPlanOptions(){if(!cStart.value)cStart.value=localDateString(new Date());calcCustomerExpiry();cPlan.innerHTML=db.plans.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
-function saveCustomer(){let id=cId.value.trim(),name=cName.value.trim();if(!id||!name)return alert('Customer ID and Name are required.');let start=cStart.value||localDateString(new Date());let obj={id,name,mobile:cMobile.value.trim(),address:cAddress.value.trim(),plan:cPlan.value,speed:cSpeed.value.trim(),amount:Number(cAmount.value||0),validity:Number(cValidity.value||30),start,renewedOn:start,expiry:calcExpiryDate(start,Number(cValidity.value||30)),status:cStatus.value};let i=db.customers.findIndex(c=>c.id===id);if(i>=0)db.customers[i]=obj;else db.customers.push(obj);save();clearCustomer();alert('Customer saved.')}
+async function saveCustomer(){
+  const id=cId.value.trim(), name=cName.value.trim();
+  const mobile=cMobile.value.trim();
+  if(!id||!name) return alert('Customer ID and Name are required.');
+  const start=cStart.value||localDateString(new Date());
+  const obj={id,name,mobile,address:cAddress.value.trim(),plan:cPlan.value,speed:cSpeed.value.trim(),amount:Number(cAmount.value||0),validity:Number(cValidity.value||30),start,renewedOn:start,expiry:calcExpiryDate(start,Number(cValidity.value||30)),status:cStatus.value};
+  const i=db.customers.findIndex(c=>c.id===id);
+  const isNew=i<0;
+  if(isNew) db.customers.push(obj); else db.customers[i]=obj;
+  save(); clearCustomer();
+  if(isNew && cloudEnabled && cloud && cloudUser){
+    try{
+      // Wait for the just-added customer record to reach Supabase before
+      // the server-side login creator checks app_data.
+      for(let attempt=0; attempt<30 && localStorage.getItem(REISNET_PENDING_SYNC)==='1'; attempt++){
+        await new Promise(resolve=>setTimeout(resolve,300));
+      }
+      if(localStorage.getItem(REISNET_PENDING_SYNC)==='1'){
+        throw new Error('Customer data has not synced to cloud yet. Please use Cloud Sync and retry.');
+      }
+      const sessionResult=await cloud.auth.getSession();
+      const accessToken=sessionResult?.data?.session?.access_token;
+      if(!accessToken) throw new Error('Admin login session not found. Please reconnect Cloud Sync.');
+      const cfg=cloudCfg();
+      const response=await fetch(cfg.url.replace(/\/$/, '')+'/functions/v1/create-customer-login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+accessToken,'apikey':cfg.key},
+        body:JSON.stringify({customerId:id,name,mobile})
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok || !result.success){
+        console.error('Customer portal account creation:',result);
+        alert('Customer saved, but Portal Login could not be created automatically. Error: '+(result.error||'Check create-customer-login Edge Function.'));
+        return;
+      }
+      alert('Customer saved. Customer Portal Login created.\nCustomer ID: '+id+'\nInitial password: customer mobile number. Ask the customer to change it after first login.');
+    }catch(e){
+      console.error('Customer portal account creation:',e);
+      alert('Customer saved, but Portal Login creation failed. Check Cloud Sync and create-customer-login Function.');
+    }
+  }else{
+    alert(isNew ? 'Customer saved. To create its portal login automatically, connect Cloud Sync and deploy create-customer-login.' : 'Customer updated.');
+  }
+}
 function clearCustomer(){['cId','cName','cMobile','cAddress','cSpeed','cAmount','cStart','cExpiry'].forEach(id=>document.getElementById(id).value='');if(cPlan.options.length)cPlan.selectedIndex=0;cValidity.value=30;cStatus.value='Active'}
 function renderCustomers(){let q=(custSearch.value||'').toLowerCase();customersTable.innerHTML=db.customers.filter(c=>(c.id+' '+c.name+' '+c.mobile+' '+c.plan).toLowerCase().includes(q)).map(c=>{let dl=daysLeft(c.expiry);let st=dl<0?'EXPIRED':dl<=2?'EXPIRING':'ACTIVE';return `<tr><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${esc(c.mobile)}</td><td>${esc(c.plan)}</td><td>${esc(c.speed)}</td><td>${money(c.amount)}</td><td>${fmt(c.start||c.renewedOn)}</td><td>${fmt(c.expiry)}</td><td>${dl<0?Math.abs(dl)+' days ago':dl+' days'}</td><td><span class="badge ${st==='ACTIVE'?'b-paid':st==='EXPIRED'?'b-due':'b-partial'}">${st}</span></td><td><button class="btn btn-light" onclick='editCustomer(${JSON.stringify(c.id)})'>Edit</button> <button class="btn btn-green" onclick='openRenew(${JSON.stringify(c.id)})'>Renew</button> <button class="btn btn-red" onclick='deleteCustomer(${JSON.stringify(c.id)})'>Delete</button></td></tr>`}).join('')||'<tr><td colspan="12" class="empty">No customers.</td></tr>'}
 function deleteCustomer(id){let c=db.customers.find(x=>x.id===id);if(!c)return;if(!confirm('Delete customer '+id+'? This will remove the customer from this portal.'))return;db.customers=db.customers.filter(x=>x.id!==id);save();renderCustomers();refreshAll();alert('Customer deleted.')}
