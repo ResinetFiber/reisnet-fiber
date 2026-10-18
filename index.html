@@ -642,7 +642,7 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
     if(e.target && (e.target.id==='renewStart'||e.target.id==='renewValidity')) updateRenewExpiry();
   });
 
-  window.saveRenewal = function(){
+  window.saveRenewal = async function(){
     if(!renewCustomerId){ alert('Please select a customer and open Renew again.'); return; }
     try {
       const c=db.customers.find(x=>String(x.id)===String(renewCustomerId));
@@ -671,8 +671,16 @@ async function cloudLogout(){if(cloud){await cloud.auth.signOut()}cloudEnabled=f
       if(typeof refreshAll==='function') refreshAll();
       closeRenew();
       showInvoice(inv);
-      // Cloud sync runs separately and cannot prevent the invoice from appearing.
-      try { if(typeof cloudSave==='function') cloudSave(); } catch(cloudError) { console.error('Renewal invoice cloud sync failed:',cloudError); }
+      // Push renewal dates and invoice to Supabase immediately so the Customer Portal
+      // reads the new expiry and the newly-created renewal invoice on its next refresh.
+      try {
+        if(typeof cloudSave==='function') {
+          const synced = await cloudSave();
+          if(!synced && typeof cloudEnabled!=='undefined' && cloudEnabled) {
+            alert('Renewal saved locally, but cloud sync has not confirmed yet. Keep this portal open and use Cloud Sync before expecting the Customer Portal to update.');
+          }
+        }
+      } catch(cloudError) { console.error('Renewal invoice cloud sync failed:',cloudError); }
     } catch(e) {
       console.error('Renewal invoice generation failed:',e);
       alert('Invoice generate nahi hua: '+(e && e.message ? e.message : String(e))+'\nPlease check the renewal details and try again.');
